@@ -4,6 +4,7 @@ import time
 import boto3
 from flask import Flask, request, url_for, session, redirect
 #from dotenv import load_dotenv
+from flask_session import Session
 import base64
 import os
 from requests import post
@@ -15,26 +16,55 @@ import pandas as pd
 
 app = Flask(__name__)
 
+
 #These are needed to verify my app with spotify
 client_id = os.getenv("CLIENT_ID")
 client_secret = os.getenv("CLIENT_SECRET")
 
-app.secret_key = "fdfdasjklnfdlsf"
-app.config["SESSION_COOKIE_NAME"] = "Brandon Cookie"
+#app.secret_key = "fdfdasjklnfdlsf"
+#app.config["SESSION_COOKIE_NAME"] = "Brandon Cookie"
+app.config['SECRET_KEY'] = os.urandom(64)
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_FILE_DIR'] = './.flask_session/'
 TOKEN_INFO = "token_info"
+Session(app)
 
 @app.route('/home')
 def home(): # put application's code here
 
-    session['token_info'] = ""
-    sp_oauth = create_spotify_oauth()
-    auth_url = sp_oauth.get_authorize_url()
+    cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
+    auth_manager = spotipy.oauth2.SpotifyOAuth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=url_for('home', _external=True),
+        scope=("user-read-currently-playing", "user-read-private"),
+        cache_handler=cache_handler
 
-    return redirect(auth_url)
-    #load_dotenv()
-    #token = get_token()
-    #print(token)
-    #print(client_id, client_secret)
+    )
+
+    if request.args.get("code"):
+        # Step 2. Being redirected from Spotify auth page
+        auth_manager.get_access_token(request.args.get("code"))
+        return redirect('/home')
+
+    if not auth_manager.validate_token(cache_handler.get_cached_token()):
+        # Step 1. Display sign in link when no token
+        auth_url = auth_manager.get_authorize_url()
+
+        return f'<h2><a href="{auth_url}">Sign in</a></h2>'
+    add_current_user()
+    # Step 3. Signed in, display data
+    spotify = spotipy.Spotify(auth_manager=auth_manager)
+    #print(auth_manager.get_access_token())
+
+
+    return f'<h2>Hi {spotify.me()["display_name"]}, ' \
+            f'<small><a href="/sign_out">[sign out]<a/></small></h2>' \
+            f'<a href="/playlists">my playlists</a> | ' \
+            f'<a href="/getTrack">currently playing</a> | ' \
+            f'<a href="/current_user">me</a>' \
+ \
+
 
 
 @app.route('/logout')
@@ -52,16 +82,15 @@ def logout():
 @app.route('/redirect')
 def redirectPage():
 
-    sp_oauth = create_spotify_oauth()
-    session.clear()
-    code = request.args.get('code')
-    token_info = sp_oauth.get_access_token(code)
-
-    user_name = get_users_user_name(sign_up_user_id(token_info))
-    session[user_name]['token_info'] = token_info
+    #sp_oauth = create_spotify_oauth()
+    #code = request.args.get('code')
+    #token_info = sp_oauth.get_access_token(code)
+    #print(token_info)
     #session[TOKEN_INFO] = token_info
 
-    add_current_user()
+
+
+    #add_current_user()
 
     #check if usser is the db
 
@@ -72,11 +101,11 @@ def redirectPage():
 
 @app.route("/get-user-track/<id>")
 def get_user_track(id):
-    access_token, refresh_token, expires_at = get_user_token(id)
+    token_info = get_user_token_info(id)
     session.modified = True
     #if not authorized:
         #return redirect('/')
-    sp = spotipy.Spotify(auth=access_token)
+    sp = spotipy.Spotify(auth=token_info.get('access_token'))
 
     name = get_users_user_name(id)
     output = ""
@@ -104,11 +133,19 @@ def listUsers():
     return "test"
 @app.route("/getTrack")
 def getTrack():
-    session['token_info'], authorized = get_token()
-    session.modified = True
-    if not authorized:
-        return redirect('/')
-    sp = spotipy.Spotify(auth=session.get('token_info').get('access_token'))
+
+    cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
+    auth_manager = spotipy.oauth2.SpotifyOAuth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=url_for('getTrack', _external=True),
+        cache_handler=cache_handler
+
+    )
+
+    if not auth_manager.validate_token(cache_handler.get_cached_token()):
+        return redirect('/home')
+    sp = spotipy.Spotify(auth_manager=auth_manager)
 
     name = get_users_name()
     output = ""
@@ -128,41 +165,13 @@ def getTrack():
     return name + " is listening to " + track + " - " + artist_name
 
 
-        # for idx, item in enumerate(curGroup):
-        #     track = item['track']
-        #     val = track['name'] + " - " + track['artists'][0]['name']
-        #     results += str([val])
-        # if (len(curGroup) < 50):
-        #     break
-
-    #df = pd.DataFrame(results, columns=["song names"])
-    #df.to_csv('songs.csv', index=False)
-
-def get_user_token(id):
-
-    #get the original info for the user
-    access_token, refresh_token, expires_at = get_user_token_info(id)
-    # Checking if token has expired
-    now = int(time.time())
-    is_token_expired = expires_at - now < 60
-
-    # Refreshing token if it has expired
-    if (is_token_expired):
-        sp_oauth = create_spotify_oauth()
-        token_info = sp_oauth.refresh_access_token(refresh_token)
-
-    #new tokens ready to be returned
-    access_token = token_info['access_token']
-    refresh_token = token_info['refresh_token']
-    expires_at = token_info['expires_at']
-    token_valid = True
-    return access_token, refresh_token, expires_at
 
 def get_user_token_info(id):
     dynamodb = boto3.resource('dynamodb')
     dynamodb_client = boto3.client('dynamodb')
     table = dynamodb.Table('users')
 
+    auth_manager = authenticate_current_user()
     response = dynamodb_client.query(
         TableName='users',
         KeyConditionExpression='id = :id',
@@ -171,36 +180,150 @@ def get_user_token_info(id):
         }
     )
 
+
     item = response['Items']
-
-    print(item)
-
-    access_token = item[0]['access_token']
-    expires_at = item[0]['expires_at']
-    refresh_token = item[0]['refresh_token']
-
-    return access_token, refresh_token, expires_at
+    access_token = item[0].get('access_token').get('S')
+    refresh_token = item[0].get('refresh_token').get('S')
+    expires_at = item[0].get('expires_at').get('N')
 
 
-def get_token():
-    token_valid = False
-    token_info = session.get(TOKEN_INFO, {})
-# Checking if the session already has a token stored
-    if not (session.get('token_info', False)):
-        token_valid = False
-        return token_info, token_valid
+    token_info = {'access_token':access_token, 'refresh_token':refresh_token, 'expires_at': int(expires_at)}
 
-    # Checking if token has expired
-    now = int(time.time())
-    is_token_expired = session.get('token_info').get('expires_at') - now < 60
+    if auth_manager.is_token_expired(token_info):
+        token_info = auth_manager.refresh_access_token(token_info.get('refresh_token'))
+        token = token_info['access_token']
+        sp = spotipy.Spotify(auth=token)
 
-    # Refreshing token if it has expired
-    if (is_token_expired):
-        sp_oauth = create_spotify_oauth()
-        token_info = sp_oauth.refresh_access_token(session.get('token_info').get('refresh_token'))
+    return token_info
 
-    token_valid = True
-    return token_info, token_valid
+
+def get_users_user_name(id):
+    token_info = get_user_token_info(id)
+    session.modified = True
+    #if not authorized:
+        #return redirect('/')
+
+    sp = spotipy.Spotify(auth=token_info.get('access_token'))
+
+    results = sp.current_user()
+    name = results["display_name"]
+
+    return name
+def get_users_name():
+
+    auth_manager = authenticate_current_user()
+    sp = spotipy.Spotify(auth_manager=auth_manager)
+    results = sp.current_user()
+    name = results["display_name"]
+
+    return name
+
+def get_user_id():
+
+    auth_manager = authenticate_current_user()
+    sp = spotipy.Spotify(auth_manager=auth_manager)
+    results = sp.current_user()
+    id = results["id"]
+
+    return id
+
+def authenticate_current_user():
+    cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
+    auth_manager = spotipy.oauth2.SpotifyOAuth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=url_for('getTrack', _external=True),
+        cache_handler=cache_handler
+
+    )
+    if not auth_manager.validate_token(cache_handler.get_cached_token()):
+        return redirect('/home')
+
+    return auth_manager
+def add_current_user():
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('users')
+
+    username = get_users_name()
+    id = get_user_id()
+
+    auth_manager = authenticate_current_user()
+    table.put_item(
+        Item={
+            'id': id,
+            'username': username,
+            'access_token': auth_manager.get_cached_token().get('access_token'),
+            'refresh_token':auth_manager.get_cached_token().get('refresh_token'),
+            'expires_at': auth_manager.get_cached_token().get('expires_at')
+        }
+    )
+
+    response = table.get_item(
+        Key={
+            'username': username,
+            'id': id
+        }
+    )
+    item = response['Item']
+    #print(item)
+    return
+
+
+if __name__ == '__main__':
+
+    app.run(port=8000)
+
+#pip install python-dotenv
+#pip install requests
+#pip install urllib3==1.26.6
+#pip install spotipy
+#pip install pandas
+
+
+#def get_token():
+#     token_valid = False
+#     token_info = session.get(TOKEN_INFO, {})
+# # Checking if the session already has a token stored
+#     if not (session.get('token_info', False)):
+#         token_valid = False
+#         return token_info, token_valid
+#
+#     # Checking if token has expired
+#     now = int(time.time())
+#     is_token_expired = session.get('token_info').get('expires_at') - now < 60
+#
+#     # Refreshing token if it has expired
+#     if (is_token_expired):
+#         sp_oauth = create_spotify_oauth()
+#         token_info = sp_oauth.refresh_access_token(session.get('token_info').get('refresh_token'))
+#
+#     token_valid = True
+#     return token_info, token_valid
+
+
+# def get_user_token(id):
+#
+#     #get the original info for the user
+#     access_token, refresh_token, expires_at = get_user_token_info(id)
+#     # Checking if token has expired
+#     now = int(time.time())
+#     is_token_expired = expires_at - now < 60
+#
+#     # Refreshing token if it has expired
+#     if (is_token_expired):
+#         sp_oauth = create_spotify_oauth()
+#         token_info = sp_oauth.refresh_access_token(refresh_token)
+#
+#     #new tokens ready to be returned
+#     access_token = token_info['access_token']
+#     refresh_token = token_info['refresh_token']
+#     expires_at = token_info['expires_at']
+#     token_valid = True
+#     return access_token, refresh_token, expires_at
+
+
+
+#
 
 # def get_token():
 #
@@ -222,94 +345,7 @@ def get_token():
 #     return token
 
 
+#
 
-def get_auth_header(token):
-    return {"Authorization": "Bearer " + token}
-
-def get_users_user_name(id):
-    access_token, refresh_token, expires_at = get_user_token(id)
-    session.modified = True
-    #if not authorized:
-        #return redirect('/')
-    sp = spotipy.Spotify(auth=access_token)
-
-    results = sp.current_user()
-    name = results["display_name"]
-
-    return name
-def get_users_name():
-    session['token_info'], authorized = get_token()
-    session.modified = True
-    if not authorized:
-        return redirect('/')
-    sp = spotipy.Spotify(auth=session.get('token_info').get('access_token'))
-
-    results = sp.current_user()
-    name = results["display_name"]
-
-    return name
-
-def sign_up_user_id(token_info):
-    sp = spotipy.Spotify(auth=(token_info).get('access_token'))
-
-    results = sp.current_user()
-    id = results["id"]
-
-    return id
-
-def get_user_id():
-    session['token_info'], authorized = get_token()
-    session.modified = True
-    if not authorized:
-        return redirect('/')
-    sp = spotipy.Spotify(auth=session.get('token_info').get('access_token'))
-
-    results = sp.current_user()
-    id = results["id"]
-
-    return id
-
-def add_current_user():
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('users')
-
-    username = get_users_name()
-    id = get_user_id()
-    table.put_item(
-        Item={
-            'id': id,
-            'username': username,
-            'access_token': session.get('token_info').get('access_token'),
-            'refresh_token':session.get('token_info').get('refresh_token'),
-            'expires_at': session.get('token_info').get('refresh_token'),
-        }
-    )
-
-    response = table.get_item(
-        Key={
-            'username': username,
-            'id': id
-        }
-    )
-    item = response['Item']
-    print(item)
-    return
-
-def create_spotify_oauth():
-    return SpotifyOAuth(
-        client_id=client_id,
-        client_secret=client_secret,
-        redirect_uri=url_for('redirectPage', _external=True),
-        scope=("user-read-currently-playing","user-read-private")
-
-    )
-
-if __name__ == '__main__':
-
-    app.run(port=8000)
-
-#pip install python-dotenv
-#pip install requests
-#pip install urllib3==1.26.6
-#pip install spotipy
-#pip install pandas
+# def get_auth_header(token):
+#     return {"Authorization": "Bearer " + token}
