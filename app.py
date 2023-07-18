@@ -33,10 +33,9 @@ Session(app)
 CORS(app, supports_credentials=True)
 #REDIRECT_URI = 'ec2-18-233-84-132.compute-1.amazonaws.com:80/home'
 REDIRECT_URI = 'http://127.0.0.1:5000/home'
-
-aws_access_key_id='ASIA3TN67ELMU6XJ7S4B'
-aws_secret_access_key='GONGqi7zrBujgkCK7gIjIUq+ksqHnypuHyIzF5E+'
-aws_session_token='FwoGZXIvYXdzEPH//////////wEaDMyhzy9G9/k+d7Q7xCLAAep6/LYuB9Y/hiwvZD7hVax8PenUvsMwEibeqxHCgaMYM291PxWJBc58CL8g6wAIbwHtqzQGM8xjr1dWm6VwIhSRX8Q1RaHJCQXhVgD+nNW/fRVwHB2rjsXQdcwgtMNxBa+qpBa25Ar6P2uH4Pd27F5i/mB+WJoEWS3n1S02XSTMa+ut05RjCijvPSxVqHZO6t9TM45LMXWyf2tdhI/Gz2CgMDnjrR5zuyyd9IspV4PlGh7p61wggkVGA/6oL7haqyiLpdelBjIt/y7X3XuMqAWVu5krQ0oYkE9+Ey5yR9pMZd9ruFkVunNCvfE6TqHyC3tx2KOR'
+aws_access_key_id='ASIA3TN67ELM77ALY3VN'
+aws_secret_access_key='hOwmQMvdYW7wXx8OOb8w9LnK/d/4pvZFaLdV4GdW'
+aws_session_token='FwoGZXIvYXdzEAYaDJSkMmM2jTVfgqtWIyLAASh8b7PeQIZQJxccIlfYHAgBHTE7WxmKG3XxhLqk09UFCFnO42azqKylNiTh6eWaYizXdAv4wa5x6EK/uGuJVhtL5X1CCfuZy8cpp7+bfIlHdusTydIyz12ywWKzjXne59fGj50TUlmUrlGVFHs3wEKCL8C/RZpEI4u0FOVMA9kXs1CgErnF4IJ4Mf0e4ry7FZOVAXSYoPp5hW9AdRPbFhhEdKGssBsaN/sUUPwUogdUtA3/GMPn63p/lVeWjirLDSie9NulBjItERREtaAy//CWnz8jJrYV8GOqJrqiKC5qjbwHMQPVL+OilcgHNvz+t8wg2+zW'
 REGION_NAME = 'us-east-1'
 
 
