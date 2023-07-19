@@ -3,7 +3,7 @@ import time
 from flask_cors import CORS
 import boto3
 import flask
-from flask import Flask, request, url_for, session, redirect
+from flask import Flask, request, url_for, session, redirect, render_template
 # from dotenv import load_dotenv
 from flask_session import Session
 import base64
@@ -15,6 +15,7 @@ import time
 import webbrowser
 import pandas as pd
 from botocore.exceptions import ClientError
+from boto3.dynamodb.conditions import Key, Attr
 
 app = Flask(__name__)
 
@@ -47,7 +48,7 @@ def home():  # put application's code here
         client_id=get_secret().get('spotify_client'),
         client_secret=get_secret().get('spotify_secret'),
         redirect_uri=REDIRECT_URI,
-        scope=("user-read-currently-playing", "user-read-private", "user-read-recently-played", "user-top-read"),
+        scope=("user-read-currently-playing", "user-read-private", "user-read-recently-played", "user-top-read", "user-read-email"),
         cache_handler=cache_handler
 
     )
@@ -62,24 +63,36 @@ def home():  # put application's code here
         # Step 1. Display sign in link when no token
         auth_url = auth_manager.get_authorize_url()
 
-        return f'<h2><a href="{auth_url}">Sign in</a></h2>'
+        return render_template('home-signed-out.html', url=auth_url)
+
 
     add_current_user()
     # Step 3. Signed in, display data
     spotify = spotipy.Spotify(auth_manager=auth_manager)
     # print(auth_manager.get_access_token())
-    return f'<h2>Hi {spotify.me()["display_name"]}, ' \
-           f'<small><a href="/sign-out">[sign out]<a/></small></h2>' \
-           f'<a href="/friends">Friends</a> | ' \
-           f'<a href="/me">Me</a>' \
- \
- \
+    username = spotify.me()['display_name']
+    return render_template('home-signed-in.html', display_name=username)
 
 
-@app.route('/add-friend/<friend_id>')
-def add_friend(friend_id):
+
+@app.route('/add-friend')
+def search_friend():
+    return render_template("add-friend.html")
+
+@app.route('/add-friend', methods=['POST'])
+def search_friend_post():
+    email = request.form['email']
+    add_friend(email)
+
+    return redirect(url_for('home'))
+
+
+@app.route('/add-friend/<friend_email>')
+def add_friend(friend_email):
     dynamodb = boto3.resource('dynamodb', region_name='us-east-1', aws_access_key_id=aws_access_key_id,
                               aws_secret_access_key=aws_secret_access_key, aws_session_token=aws_session_token)
+
+    friend_id = get_user_id_by_email(friend_email)
     table = dynamodb.Table('friends')
     username = get_users_name()
     curr_id = get_user_id()
@@ -120,15 +133,17 @@ def friends():
 
     friends = []
     for x in items:
-        friend_id = x.get('friend_id')
+        friend_id = x.get('friend_id').get('S')
 
-        friend_username = x.get('friend_username')
+        friend_username = x.get('friend_username').get('S')
         dict = {'id': friend_id, 'username':friend_username}
         friends.append(dict)
 
-    return f'<h2> Your friends list:\n ' \
-            f'<a href="/friends/{friends[0].get("id").get("S")}">{friends[0].get("username").get("S")}</a> ' \
- \
+    for i in range(5):
+        dict = {'id': "", 'username': ""}
+        friends.append(dict)
+
+    return render_template("friends.html", friends=friends)
 
 
 @app.route('/friends/<friend_id>')
@@ -463,7 +478,35 @@ def get_user_token_info(id):
         sp = spotipy.Spotify(auth=token)
 
     return token_info
+def get_user_token_info_by_email(email):
 
+    #dynamodb_client = boto3.client('dynamodb', region_name='us-east-1', aws_access_key_id=aws_access_key_id,
+                                   #aws_secret_access_key=aws_secret_access_key, aws_session_token=aws_session_token)
+
+    dynamodb = boto3.resource('dynamodb',region_name='us-east-1', aws_access_key_id=aws_access_key_id,
+                                   aws_secret_access_key=aws_secret_access_key, aws_session_token=aws_session_token)
+    table = dynamodb.Table('users')
+
+    auth_manager = authenticate_current_user()
+    response = table.scan(
+       FilterExpression=Key('email').eq(email.lower())
+    )
+
+    print(email)
+    print(response)
+    item = response['Items']
+    access_token = item[0].get('access_token')
+    refresh_token = item[0].get('refresh_token')
+    expires_at = item[0].get('expires_at')
+
+    token_info = {'access_token': access_token, 'refresh_token': refresh_token, 'expires_at': int(expires_at)}
+
+    if auth_manager.is_token_expired(token_info):
+        token_info = auth_manager.refresh_access_token(token_info.get('refresh_token'))
+        token = token_info['access_token']
+        sp = spotipy.Spotify(auth=token)
+
+    return token_info
 
 def get_users_user_name(id):
     token_info = get_user_token_info(id)
@@ -477,6 +520,17 @@ def get_users_user_name(id):
     name = results["display_name"]
 
     return name
+
+def get_user_id_by_email(email):
+    token_info = get_user_token_info_by_email(email)
+    session.modified=True
+
+    sp = spotipy.Spotify(auth=token_info.get('access_token'))
+    results = sp.current_user()
+    id = results['id']
+
+    return id
+
 
 
 def get_users_name():
@@ -496,6 +550,13 @@ def get_user_id():
 
     return id
 
+def get_user_email():
+    auth_manager = authenticate_current_user()
+    sp = spotipy.Spotify(auth_manager=auth_manager)
+    results = sp.current_user()
+    email = results['email']
+
+    return email
 
 def authenticate_current_user():
     cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
@@ -519,12 +580,14 @@ def add_current_user():
 
     username = get_users_name()
     id = get_user_id()
+    email = get_user_email()
 
     auth_manager = authenticate_current_user()
     table.put_item(
         Item={
             'id': id,
             'username': username,
+            'email':email,
             'access_token': auth_manager.get_cached_token().get('access_token'),
             'refresh_token': auth_manager.get_cached_token().get('refresh_token'),
             'expires_at': auth_manager.get_cached_token().get('expires_at')
@@ -576,78 +639,3 @@ def get_secret():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=80)
 
-# pip install python-dotenv
-# pip install requests
-# pip install urllib3==1.26.6
-# pip install spotipy
-# pip install pandas
-
-
-# def get_token():
-#     token_valid = False
-#     token_info = session.get(TOKEN_INFO, {})
-# # Checking if the session already has a token stored
-#     if not (session.get('token_info', False)):
-#         token_valid = False
-#         return token_info, token_valid
-#
-#     # Checking if token has expired
-#     now = int(time.time())
-#     is_token_expired = session.get('token_info').get('expires_at') - now < 60
-#
-#     # Refreshing token if it has expired
-#     if (is_token_expired):
-#         sp_oauth = create_spotify_oauth()
-#         token_info = sp_oauth.refresh_access_token(session.get('token_info').get('refresh_token'))
-#
-#     token_valid = True
-#     return token_info, token_valid
-
-
-# def get_user_token(id):
-#
-#     #get the original info for the user
-#     access_token, refresh_token, expires_at = get_user_token_info(id)
-#     # Checking if token has expired
-#     now = int(time.time())
-#     is_token_expired = expires_at - now < 60
-#
-#     # Refreshing token if it has expired
-#     if (is_token_expired):
-#         sp_oauth = create_spotify_oauth()
-#         token_info = sp_oauth.refresh_access_token(refresh_token)
-#
-#     #new tokens ready to be returned
-#     access_token = token_info['access_token']
-#     refresh_token = token_info['refresh_token']
-#     expires_at = token_info['expires_at']
-#     token_valid = True
-#     return access_token, refresh_token, expires_at
-
-
-#
-
-# def get_token():
-#
-#     auth_string = client_id + ":" + client_secret
-#     auth_bytes = auth_string.encode("utf-8")
-#     auth_base64 = str(base64.b64encode(auth_bytes), "utf-8")
-#     url = "https://accounts.spotify.com/api/token"
-#
-#     headers = {
-#         "Authorization": "Basic " + auth_base64,
-#         "Content-Type": "application/x-www-form-urlencoded"
-#     }
-#
-#     data = {"grant_type": "client_credentials"}
-#
-#     result = post(url, headers=headers, data=data)
-#     json_result = json.loads(result.content)
-#     token = json_result["access_token"]
-#     return token
-
-
-#
-
-# def get_auth_header(token):
-#     return {"Authorization": "Bearer " + token}

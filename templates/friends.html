@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Home</title>
+    <style>
+         body{
+            background-color: lawngreen;
+        }
+        h1{
+            text-align: center;
+        }
+        h2{
+            text-align: center;
+        }
+        h3{
+            text-align: center;
+        }
+
+    </style>
+
+</head>
+<body>
+    <h1>Your friends list</h1>
+    <h2><a href="/add-friend">Add a friend (+)</a> </h2>
+    <h3><a href="/friends/{{friends[0].get("id")}}">{{friends[0].get("username")}}</a> </h3>
+
+
+</body>
+</html>
