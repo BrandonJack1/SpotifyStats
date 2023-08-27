@@ -17,25 +17,18 @@ import pandas as pd
 from botocore.exceptions import ClientError
 
 app = Flask(__name__)
-
-# These are needed to verify my app with spotify
-# client_id = os.getenv("CLIENT_ID")
-# client_secret = os.getenv("CLIENT_SECRET")
-
-# app.secret_key = "fdfdasjklnfdlsf"
-# app.config["SESSION_COOKIE_NAME"] = "Brandon Cookie"
 app.config['SECRET_KEY'] = os.urandom(64)
 app.config['SESSION_PERMANENT'] = True
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_FILE_DIR'] = './.flask_session/'
 TOKEN_INFO = "token_info"
+
 Session(app)
 CORS(app, supports_credentials=True)
-#REDIRECT_URI = 'ec2-18-233-84-132.compute-1.amazonaws.com:80/home'
 REDIRECT_URI = 'http://127.0.0.1:5000/home'
-aws_access_key_id='ASIA3TN67ELM77ALY3VN'
-aws_secret_access_key='hOwmQMvdYW7wXx8OOb8w9LnK/d/4pvZFaLdV4GdW'
-aws_session_token='FwoGZXIvYXdzEAYaDJSkMmM2jTVfgqtWIyLAASh8b7PeQIZQJxccIlfYHAgBHTE7WxmKG3XxhLqk09UFCFnO42azqKylNiTh6eWaYizXdAv4wa5x6EK/uGuJVhtL5X1CCfuZy8cpp7+bfIlHdusTydIyz12ywWKzjXne59fGj50TUlmUrlGVFHs3wEKCL8C/RZpEI4u0FOVMA9kXs1CgErnF4IJ4Mf0e4ry7FZOVAXSYoPp5hW9AdRPbFhhEdKGssBsaN/sUUPwUogdUtA3/GMPn63p/lVeWjirLDSie9NulBjItERREtaAy//CWnz8jJrYV8GOqJrqiKC5qjbwHMQPVL+OilcgHNvz+t8wg2+zW'
+aws_access_key_id= #key
+aws_secret_access_key= #key
+aws_session_token= #key
 REGION_NAME = 'us-east-1'
 
 
@@ -575,79 +568,3 @@ def get_secret():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=80)
-
-# pip install python-dotenv
-# pip install requests
-# pip install urllib3==1.26.6
-# pip install spotipy
-# pip install pandas
-
-
-# def get_token():
-#     token_valid = False
-#     token_info = session.get(TOKEN_INFO, {})
-# # Checking if the session already has a token stored
-#     if not (session.get('token_info', False)):
-#         token_valid = False
-#         return token_info, token_valid
-#
-#     # Checking if token has expired
-#     now = int(time.time())
-#     is_token_expired = session.get('token_info').get('expires_at') - now < 60
-#
-#     # Refreshing token if it has expired
-#     if (is_token_expired):
-#         sp_oauth = create_spotify_oauth()
-#         token_info = sp_oauth.refresh_access_token(session.get('token_info').get('refresh_token'))
-#
-#     token_valid = True
-#     return token_info, token_valid
-
-
-# def get_user_token(id):
-#
-#     #get the original info for the user
-#     access_token, refresh_token, expires_at = get_user_token_info(id)
-#     # Checking if token has expired
-#     now = int(time.time())
-#     is_token_expired = expires_at - now < 60
-#
-#     # Refreshing token if it has expired
-#     if (is_token_expired):
-#         sp_oauth = create_spotify_oauth()
-#         token_info = sp_oauth.refresh_access_token(refresh_token)
-#
-#     #new tokens ready to be returned
-#     access_token = token_info['access_token']
-#     refresh_token = token_info['refresh_token']
-#     expires_at = token_info['expires_at']
-#     token_valid = True
-#     return access_token, refresh_token, expires_at
-
-
-#
-
-# def get_token():
-#
-#     auth_string = client_id + ":" + client_secret
-#     auth_bytes = auth_string.encode("utf-8")
-#     auth_base64 = str(base64.b64encode(auth_bytes), "utf-8")
-#     url = "https://accounts.spotify.com/api/token"
-#
-#     headers = {
-#         "Authorization": "Basic " + auth_base64,
-#         "Content-Type": "application/x-www-form-urlencoded"
-#     }
-#
-#     data = {"grant_type": "client_credentials"}
-#
-#     result = post(url, headers=headers, data=data)
-#     json_result = json.loads(result.content)
-#     token = json_result["access_token"]
-#     return token
-
-
-#
-
-# def get_auth_header(token):
-#     return {"Authorization": "Bearer " + token}
