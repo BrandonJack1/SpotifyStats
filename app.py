@@ -19,24 +19,20 @@ from boto3.dynamodb.conditions import Key, Attr
 import threading
 
 app = Flask(__name__)
-
 app.config['SECRET_KEY'] = os.urandom(64)
 app.config['SESSION_PERMANENT'] = True
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_FILE_DIR'] = './.flask_session/'
 TOKEN_INFO = "token_info"
+
 Session(app)
 CORS(app, supports_credentials=True)
-#REDIRECT_URI = 'ec2-18-233-84-132.compute-1.amazonaws.com:80/home'
 REDIRECT_URI = 'http://127.0.0.1:5000/home'
-aws_access_key_id='ASIA3TN67ELMW3C3RA5M'
-aws_secret_access_key='/17ZJdqae7XFRbq4rsmVXfAf21Ryy36WDRDTtK6c'
-aws_session_token='FwoGZXIvYXdzEPD//////////wEaDBKAt2492Tb1m+rRMCLAASOGIQXALKaiu3I33sUMUxOweli8b8Z++40qP9CF13syqtFA3M6CW+W7+0NgHlRvHLWRHDyhHEgxsflSG3yXOTLV9VWcuYazoVMWaTOsJrkILc2J4uWef8UN00r0Z92ejkQrbHOxdvwUDbIN6lu1N1+GkcUwWHMTItPzheK6fGVimsIACeaY8/OA1oBCfHV4pzBTghhVhYjUDorlUDiP4ggJWdeuzL8xEwVf53XOyBrn6GZkZrwe2pMl8Q0xDrIe0yifqo+mBjItVV/qMkXLRMlod7zbJL1GEKbGodS7/vKw1F70vLjbCrELcGj1g0TLFA3WyBko'
-SPOTIFY_CLIENT = ""
-SPOTIFY_SECRET = ""
 
+aws_access_key_id= "key"
+aws_secret_access_key= "key"
+aws_session_token= "key"
 REGION_NAME = 'us-east-1'
-
 
 @app.route('/home', methods=['GET'])
 def home():  # put application's code here
@@ -721,7 +717,3 @@ def get_secret():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=80)
-
-
-
-
