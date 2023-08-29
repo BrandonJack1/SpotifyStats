@@ -16,15 +16,10 @@ import webbrowser
 import pandas as pd
 from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key, Attr
+import threading
 
 app = Flask(__name__)
 
-# These are needed to verify my app with spotify
-# client_id = os.getenv("CLIENT_ID")
-# client_secret = os.getenv("CLIENT_SECRET")
-
-# app.secret_key = "fdfdasjklnfdlsf"
-# app.config["SESSION_COOKIE_NAME"] = "Brandon Cookie"
 app.config['SECRET_KEY'] = os.urandom(64)
 app.config['SESSION_PERMANENT'] = True
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -34,23 +29,26 @@ Session(app)
 CORS(app, supports_credentials=True)
 #REDIRECT_URI = 'ec2-18-233-84-132.compute-1.amazonaws.com:80/home'
 REDIRECT_URI = 'http://127.0.0.1:5000/home'
-aws_access_key_id='ASIA3TN67ELM77ALY3VN'
-aws_secret_access_key='hOwmQMvdYW7wXx8OOb8w9LnK/d/4pvZFaLdV4GdW'
-aws_session_token='FwoGZXIvYXdzEAYaDJSkMmM2jTVfgqtWIyLAASh8b7PeQIZQJxccIlfYHAgBHTE7WxmKG3XxhLqk09UFCFnO42azqKylNiTh6eWaYizXdAv4wa5x6EK/uGuJVhtL5X1CCfuZy8cpp7+bfIlHdusTydIyz12ywWKzjXne59fGj50TUlmUrlGVFHs3wEKCL8C/RZpEI4u0FOVMA9kXs1CgErnF4IJ4Mf0e4ry7FZOVAXSYoPp5hW9AdRPbFhhEdKGssBsaN/sUUPwUogdUtA3/GMPn63p/lVeWjirLDSie9NulBjItERREtaAy//CWnz8jJrYV8GOqJrqiKC5qjbwHMQPVL+OilcgHNvz+t8wg2+zW'
+aws_access_key_id='ASIA3TN67ELMW3C3RA5M'
+aws_secret_access_key='/17ZJdqae7XFRbq4rsmVXfAf21Ryy36WDRDTtK6c'
+aws_session_token='FwoGZXIvYXdzEPD//////////wEaDBKAt2492Tb1m+rRMCLAASOGIQXALKaiu3I33sUMUxOweli8b8Z++40qP9CF13syqtFA3M6CW+W7+0NgHlRvHLWRHDyhHEgxsflSG3yXOTLV9VWcuYazoVMWaTOsJrkILc2J4uWef8UN00r0Z92ejkQrbHOxdvwUDbIN6lu1N1+GkcUwWHMTItPzheK6fGVimsIACeaY8/OA1oBCfHV4pzBTghhVhYjUDorlUDiP4ggJWdeuzL8xEwVf53XOyBrn6GZkZrwe2pMl8Q0xDrIe0yifqo+mBjItVV/qMkXLRMlod7zbJL1GEKbGodS7/vKw1F70vLjbCrELcGj1g0TLFA3WyBko'
+SPOTIFY_CLIENT = ""
+SPOTIFY_SECRET = ""
+
 REGION_NAME = 'us-east-1'
 
 
 @app.route('/home', methods=['GET'])
 def home():  # put application's code here
 
+    get_secret()
     cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
     auth_manager = spotipy.oauth2.SpotifyOAuth(
-        client_id=get_secret().get('spotify_client'),
-        client_secret=get_secret().get('spotify_secret'),
+        client_id=SPOTIFY_CLIENT,
+        client_secret=SPOTIFY_SECRET,
         redirect_uri=REDIRECT_URI,
         scope=("user-read-currently-playing", "user-read-private", "user-read-recently-played", "user-top-read", "user-read-email"),
         cache_handler=cache_handler
-
     )
 
     if request.args.get("code"):
@@ -83,8 +81,7 @@ def search_friend():
 def search_friend_post():
     email = request.form['email']
     add_friend(email)
-
-    return redirect(url_for('home'))
+    return redirect(url_for('friends'))
 
 
 @app.route('/add-friend/<friend_email>')
@@ -127,8 +124,6 @@ def friends():
             ':id': {'S': id}
         }
     )
-
-
     items = response['Items']
 
     friends = []
@@ -150,6 +145,7 @@ def friends():
 def friendsProfile(friend_id):
 
     current_song = get_user_track(friend_id)
+    current_song_album = get_user_current_track_album(friend_id)
     name = get_users_user_name(friend_id)
 
     print(current_song)
@@ -161,51 +157,52 @@ def friendsProfile(friend_id):
     recent4 = recentTracks[3]
     recent5 = recentTracks[4]
 
-    longTracks = get_user_top_tracks(friend_id, 'long_term')
-
+    longTracks, longAlbums = get_user_top_tracks(friend_id, 'long_term')
     for i in range(5):
         longTracks.append("")
-    mediumTracks = get_user_top_tracks(friend_id, 'medium_term')
+        longAlbums.append("")
+    mediumTracks, mediumAlbums = get_user_top_tracks(friend_id, 'medium_term')
 
     for i in range(5):
         mediumTracks.append("")
-    shortTracks = get_user_top_tracks(friend_id, 'short_term')
+        mediumAlbums.append("")
+    shortTracks, shortAlbums = get_user_top_tracks(friend_id, 'short_term')
 
     for i in range(5):
         shortTracks.append("")
+        shortAlbums.append("")
 
-    return f'<h2> {name} is currently listening to <b> {current_song}</b> \n\n' \
-           f'<h2> Some of the songs {name} recently played: \n' \
-           f'<h4>1. {recent1}\n' \
-           f'<h4>2. {recent2}\n' \
-           f'<h4>3. {recent3}\n' \
-           f'<h4>4. {recent4}\n' \
-           f'<h4>5. {recent5}\n' \
-           f'<h2> {name}s top tracks:\n' \
-           f'<h3> All Time: ' \
-           f'<h4> 1. {longTracks[0]}\t\t' \
-           f'<h4> 2. {longTracks[1]}\t\t' \
-           f'<h4> 3. {longTracks[2]}\t\t' \
-           f'<h4> 4. {longTracks[3]}\t\t' \
-           f'<h4> 5. {longTracks[4]}\t\t' \
-           f'<h3> Past 6 Months:' \
-           f'<h4> 1. {mediumTracks[0]}\t\t' \
-           f'<h4> 2. {mediumTracks[1]}\t\t' \
-           f'<h4> 3. {mediumTracks[2]}\t\t' \
-           f'<h4> 4. {mediumTracks[3]}\t\t' \
-           f'<h4> 5. {mediumTracks[4]}\t\t' \
-           f'<h3> Past 4 Weeks:' \
-           f'<h4> 1. {shortTracks[0]}\t\t' \
-           f'<h4> 2. {shortTracks[1]}\t\t' \
-           f'<h4> 3. {shortTracks[2]}\t\t' \
-           f'<h4> 4. {shortTracks[3]}\t\t' \
-           f'<h4> 5. {shortTracks[4]}\t\t' \
- \
+    artistNames, artistImages = get_top_artists(friend_id)
+    for x in range(5):
+        artistNames.append("")
+        artistImages.append("")
+
+    data = {"username": name, "current_song": current_song, "current_song_album": current_song_album,
+            "recent1": recent1, "recent2": recent2, "recent3": recent3, "recent4": recent4, "recent5": recent5,
+            "long1": longTracks[0], "longAlbum1": longAlbums[0], "long2": longTracks[1], "longAlbum2": longAlbums[1],
+            "long3": longTracks[2], "longAlbum3": longAlbums[2], "long4": longTracks[3], "longAlbum4": longAlbums[3],
+            "long5": longTracks[4], "longAlbum5": longAlbums[4],
+            "medium1": mediumTracks[0], "medium2": mediumTracks[1], "medium3": mediumTracks[2],
+            "medium4": mediumTracks[3], "medium5": mediumTracks[4], "mediumAlbum1": mediumAlbums[0],
+            "mediumAlbum2": mediumAlbums[1], "mediumAlbum3": mediumAlbums[2], "mediumAlbum4": mediumAlbums[3],
+            "mediumAlbum5": mediumAlbums[4],
+            "short1": shortTracks[0], "short2": shortTracks[1], "short3": shortTracks[2], "short4": shortTracks[3],
+            "short5": shortTracks[4], "shortAlbum1": shortAlbums[0], "shortAlbum2": shortAlbums[1],
+            "shortAlbum3": shortAlbums[2], "shortAlbum4": shortAlbums[3], "shortAlbum5": shortAlbums[4],
+            "artist1": artistNames[0], "artist2": artistNames[1], "artist3": artistNames[2], "artist4": artistNames[3],
+            "artist5": artistNames[4], "artistImage1": artistImages[0], "artistImage2": artistImages[1],
+            "artistImage3": artistImages[2], "artistImage4": artistImages[3], "artistImage5": artistImages[4]
+            }
+
+
+    return render_template("friends-profile.html", data=data)
+
 
 @app.route('/me', methods=['GET'])
 def me():
 
     current_song = getTrack()
+    current_song_album = get_current_album()
     recentTracks = current_user_recently_played()
     recent1 = recentTracks[0]
     recent2 = recentTracks[1]
@@ -213,54 +210,38 @@ def me():
     recent4 = recentTracks[3]
     recent5 = recentTracks[4]
 
-    longTracks = get_top_tracks('long_term')
+    longTracks, longAlbums = get_top_tracks('long_term')
     for x in range(5):
         longTracks.append("")
 
-    mediumTracks = get_top_tracks('medium_term')
+    mediumTracks, mediumAlbums = get_top_tracks('medium_term')
     for x in range(5):
         mediumTracks.append("")
 
-    shortTracks = get_top_tracks('short_term')
+    shortTracks, shortAlbums = get_top_tracks('short_term')
     for x in range(5):
         shortTracks.append("")
 
-    return f'<h2> You are currently listenting to <b>{current_song}</b> \n\n' \
-           f'<h2> Some of the songs you recently played: \n' \
-           f'<h4>1. {recent1}\n' \
-           f'<h4>2. {recent2}\n' \
-           f'<h4>3. {recent3}\n' \
-           f'<h4>4. {recent4}\n' \
-           f'<h4>5. {recent5}\n'\
-           f'<h2> Your top tracks:\n'\
-           f'<h3> All Time: ' \
-           f'<h4> 1. {longTracks[0]}\t\t' \
-           f'<h4> 2. {longTracks[1]}\t\t' \
-           f'<h4> 3. {longTracks[2]}\t\t' \
-           f'<h4> 4. {longTracks[3]}\t\t' \
-           f'<h4> 5. {longTracks[4]}\t\t' \
-           f'<h3> Past 6 Months:' \
-           f'<h4> 1. {mediumTracks[0]}\t\t' \
-           f'<h4> 2. {mediumTracks[1]}\t\t' \
-           f'<h4> 3. {mediumTracks[2]}\t\t' \
-           f'<h4> 4. {mediumTracks[3]}\t\t' \
-           f'<h4> 5. {mediumTracks[4]}\t\t' \
-           f'<h3> Past 4 Weeks:' \
-           f'<h4> 1. {shortTracks[0]}\t\t' \
-           f'<h4> 2. {shortTracks[1]}\t\t' \
-           f'<h4> 3. {shortTracks[2]}\t\t' \
-           f'<h4> 4. {shortTracks[3]}\t\t' \
-           f'<h4> 5. {shortTracks[4]}\t\t' \
- \
- \
- \
+    artistNames, artistImages = get_top_artists("")
+    for x in range(5):
+        artistNames.append("")
+        artistImages.append("")
 
+
+    data = {"current_song":current_song,"current_song_album": current_song_album,
+            "recent1": recent1, "recent2":recent2,"recent3":recent3,"recent4":recent4,"recent5":recent5,
+            "long1": longTracks[0], "longAlbum1":longAlbums[0], "long2": longTracks[1], "longAlbum2": longAlbums[1],  "long3":longTracks[2], "longAlbum3":longAlbums[2], "long4":longTracks[3], "longAlbum4":longAlbums[3], "long5":longTracks[4], "longAlbum5": longAlbums[4],
+            "medium1": mediumTracks[0], "medium2":mediumTracks[1], "medium3":mediumTracks[2], "medium4":mediumTracks[3], "medium5":mediumTracks[4], "mediumAlbum1": mediumAlbums[0],"mediumAlbum2": mediumAlbums[1], "mediumAlbum3": mediumAlbums[2],"mediumAlbum4": mediumAlbums[3],"mediumAlbum5": mediumAlbums[4],
+            "short1": shortTracks[0], "short2":shortTracks[1], "short3":shortTracks[2], "short4":shortTracks[3], "short5":shortTracks[4], "shortAlbum1":shortAlbums[0],"shortAlbum2":shortAlbums[1], "shortAlbum3":shortAlbums[2], "shortAlbum4":shortAlbums[3], "shortAlbum5":shortAlbums[4],
+            "artist1":artistNames[0],"artist2":artistNames[1],"artist3":artistNames[2],"artist4":artistNames[3],"artist5":artistNames[4],"artistImage1": artistImages[0],"artistImage2": artistImages[1],"artistImage3": artistImages[2],"artistImage4": artistImages[3],"artistImage5": artistImages[4]
+            }
+    return render_template("my-profile.html", data=data)
 
 def current_user_recently_played():
     cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
     auth_manager = spotipy.oauth2.SpotifyOAuth(
-        client_id=get_secret().get('spotify_client'),
-        client_secret=get_secret().get('spotify_secret'),
+        client_id=SPOTIFY_CLIENT,
+        client_secret=SPOTIFY_SECRET,
         redirect_uri=url_for('getTrack', _external=True),
         cache_handler=cache_handler
 
@@ -304,8 +285,8 @@ def get_user_recently_played(friend_id):
 def get_top_tracks(time):
     cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
     auth_manager = spotipy.oauth2.SpotifyOAuth(
-        client_id=get_secret().get('spotify_client'),
-        client_secret=get_secret().get('spotify_secret'),
+        client_id=SPOTIFY_CLIENT,
+        client_secret=SPOTIFY_SECRET,
         redirect_uri=url_for('getTrack', _external=True),
         cache_handler=cache_handler
 
@@ -317,15 +298,19 @@ def get_top_tracks(time):
     topTracks = []
     response = sp.current_user_top_tracks(5, 0, time)
     items = response['items']
-    counter = 0
+
     for track in items:
         itemName = track['name']
         itemArtist = track['artists'][0]['name']
         track = itemName + " by " + itemArtist
         topTracks.append(track)
 
+    topAlbums = []
+    for album in items:
+        image = album['album']['images'][0]['url']
+        topAlbums.append(image)
 
-    return topTracks
+    return topTracks, topAlbums
 
 def get_user_top_tracks(friend_id, time):
     token_info = get_user_token_info(friend_id)
@@ -344,8 +329,13 @@ def get_user_top_tracks(friend_id, time):
         track = itemName + " by " + itemArtist
         topTracks.append(track)
 
+    topAlbums = []
+    for album in items:
+        image = album['album']['images'][0]['url']
+        topAlbums.append(image)
 
-    return topTracks
+
+    return topTracks, topAlbums
 @app.route('/sign-out')
 def sign_out():
     session.pop("token_info", None)
@@ -365,6 +355,46 @@ def redirectPage():
     # check if usser is the db
 
     return redirect(url_for('getTrack', _external=True))
+
+def get_top_artists(id):
+
+    if id == "":
+        cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
+        auth_manager = spotipy.oauth2.SpotifyOAuth(
+            client_id=SPOTIFY_CLIENT,
+            client_secret=SPOTIFY_SECRET,
+            redirect_uri=url_for('getTrack', _external=True),
+            cache_handler=cache_handler
+
+        )
+        sp = spotipy.Spotify(auth_manager=auth_manager)
+    else:
+        token_info = get_user_token_info(id)
+        session.modified = True
+        # if not authorized:
+        # return redirect('/')
+        sp = spotipy.Spotify(auth=token_info.get('access_token'))
+
+
+
+    response = sp.current_user_top_artists(5,0, 'long_term')
+
+    items = response['items']
+    artistNames = []
+    artistImages = []
+
+    for artist in items:
+        name = artist['name']
+        artistNames.append(name)
+
+        image = artist['images'][0]['url']
+        artistImages.append(image)
+
+    return artistNames, artistImages
+
+
+
+
 
 
 @app.route("/get-user-track/<id>")
@@ -391,6 +421,54 @@ def get_user_track(id):
 
     # return name + " is listening to " + track + " - " + artist_name
     return track + ' by ' + artist_name
+def get_current_album():
+    cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
+    auth_manager = spotipy.oauth2.SpotifyOAuth(
+        client_id=SPOTIFY_CLIENT,
+        client_secret=SPOTIFY_SECRET,
+        redirect_uri=url_for('getTrack', _external=True),
+        cache_handler=cache_handler
+
+    )
+
+    if not auth_manager.validate_token(cache_handler.get_cached_token()):
+        return redirect('/home')
+    sp = spotipy.Spotify(auth_manager=auth_manager)
+
+    name = get_users_name()
+    output = ""
+    results = sp.currently_playing()
+
+
+    if results is None:
+        return "nothing"
+
+    item = results['item']
+
+    image = item['album']['images'][0]['url']
+
+    return image
+def get_user_current_track_album(id):
+    token_info = get_user_token_info(id)
+    session.modified = True
+    # if not authorized:
+    # return redirect('/')
+    sp = spotipy.Spotify(auth=token_info.get('access_token'))
+
+    name = get_users_user_name(id)
+    output = ""
+    results = sp.currently_playing()
+    # results = sp.current_user_top_tracks(limit=10, offset=0, time_range='short_term')
+
+    if results is None:
+        return 'nothing'
+
+    item = results['item']
+
+    image = item['album']['images'][0]['url']
+
+
+    return image
 
 
 @app.route("/listUsers")
@@ -402,7 +480,7 @@ def listUsers():
     for item in items:
         print(item)
 
-    get_secret()
+
     return "test"
 @app.route("/listFriends")
 def listFriends():
@@ -413,7 +491,7 @@ def listFriends():
     for item in items:
         print(item)
 
-    get_secret()
+
     return "test"
 
 
@@ -421,8 +499,8 @@ def listFriends():
 def getTrack():
     cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
     auth_manager = spotipy.oauth2.SpotifyOAuth(
-        client_id=get_secret().get('spotify_client'),
-        client_secret=get_secret().get('spotify_secret'),
+        client_id=SPOTIFY_CLIENT,
+        client_secret=SPOTIFY_SECRET,
         redirect_uri=url_for('getTrack', _external=True),
         cache_handler=cache_handler
 
@@ -561,8 +639,8 @@ def get_user_email():
 def authenticate_current_user():
     cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
     auth_manager = spotipy.oauth2.SpotifyOAuth(
-        client_id=get_secret().get('spotify_client'),
-        client_secret=get_secret().get('spotify_secret'),
+        client_id=SPOTIFY_CLIENT,
+        client_secret=SPOTIFY_SECRET,
         redirect_uri=url_for('getTrack', _external=True),
         cache_handler=cache_handler
 
@@ -633,9 +711,17 @@ def get_secret():
 
     # Your code goes here.
     res = json.loads(secret)
+
+    global SPOTIFY_CLIENT
+    SPOTIFY_CLIENT= res.get('spotify_client')
+    global SPOTIFY_SECRET
+    SPOTIFY_SECRET= res.get('spotify_secret')
     return res
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(host='0.0.0.0', port=80)
+
+
+
 
